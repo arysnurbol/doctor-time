@@ -19,6 +19,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LanguageSwitcher, useI18n } from './i18n.jsx'
+import PatientCardPage from './components/PatientCardPage.jsx'
+import TreatmentPlanPage from './components/TreatmentPlanPage.jsx'
+import { PATIENTS, TREATMENT_PLANS, getPatientById, getTreatmentPlanByPatient, calculateAge } from './data/mockPatients.js'
 
 function getTodayString() {
   const now = new Date()
@@ -543,6 +546,33 @@ function ReportTable({ report }) {
   )
 }
 
+function PatientSelector({ patients, doctors, value, onChange, placeholder }) {
+  const { t } = useI18n()
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="h-12 w-full min-w-[260px] rounded-2xl border-slate-200 bg-white shadow-sm sm:w-[320px]">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {patients.map((patient) => {
+          const doctor = doctors.find((d) => d.id === patient.doctorId)
+          const age = calculateAge(patient.birthDate)
+          return (
+            <SelectItem key={patient.id} value={patient.id}>
+              <div className="flex flex-col">
+                <span className="font-semibold">{patient.name}</span>
+                <span className="text-xs text-slate-500">
+                  {t('patients.ageYears', { count: age })} · {doctor?.name || '—'}
+                </span>
+              </div>
+            </SelectItem>
+          )
+        })}
+      </SelectContent>
+    </Select>
+  )
+}
+
 function Dashboard({ currentUser, onLogout }) {
   const { t, dateLocale } = useI18n()
   const [selectedDate, setSelectedDate] = useState(getTodayString())
@@ -556,6 +586,18 @@ function Dashboard({ currentUser, onLogout }) {
     if (currentUser.role === 'doctor' && doctorId) return DOCTORS.filter((doctor) => doctor.id === doctorId)
     return DOCTORS
   }, [currentUser, doctorId])
+
+  const visiblePatients = useMemo(() => {
+    if (currentUser.role === 'doctor' && doctorId) return PATIENTS.filter((p) => p.doctorId === doctorId)
+    return PATIENTS
+  }, [currentUser, doctorId])
+
+  const defaultPatientId = visiblePatients[0]?.id ?? null
+  const [selectedPatientId, setSelectedPatientId] = useState(defaultPatientId)
+  const effectivePatientId = visiblePatients.some((p) => p.id === selectedPatientId) ? selectedPatientId : defaultPatientId
+  const selectedPatient = effectivePatientId ? getPatientById(effectivePatientId) : null
+  const selectedPatientDoctor = selectedPatient ? DOCTORS.find((d) => d.id === selectedPatient.doctorId) : null
+  const selectedPlan = effectivePatientId ? getTreatmentPlanByPatient(effectivePatientId) : null
 
   const baseReport = useMemo(() => {
     if (currentUser.role === 'doctor' && doctorId) return buildRevenueReport(t, [doctorId], dateRange)
@@ -584,8 +626,19 @@ function Dashboard({ currentUser, onLogout }) {
 
   const effectiveReport = visibleReport.length ? visibleReport : baseReport
   const canViewSchedule = currentUser.role === 'owner' || currentUser.role === 'doctor'
+  const canViewPatients = currentUser.role === 'owner' || currentUser.role === 'doctor'
+  const canViewTreatmentPlan = canViewPatients
   const canViewReport = true
   const defaultTab = currentUser.role === 'accountant' ? 'report' : 'schedule'
+  const [activeTab, setActiveTab] = useState(defaultTab)
+  const tabsConfig = [
+    canViewSchedule ? { value: 'schedule', label: t('controls.tabSchedule') } : null,
+    canViewPatients ? { value: 'patients', label: t('controls.tabPatients') } : null,
+    canViewTreatmentPlan ? { value: 'treatmentPlan', label: t('controls.tabTreatmentPlan') } : null,
+    canViewReport ? { value: 'report', label: t('controls.tabReport') } : null,
+  ].filter(Boolean)
+  const tabGridCols = tabsConfig.length === 4 ? 'grid-cols-4' : tabsConfig.length === 3 ? 'grid-cols-3' : 'grid-cols-2'
+  const controlsVisible = activeTab === 'schedule' || activeTab === 'report'
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.15),_transparent_30%),linear-gradient(180deg,_#f8fafc,_#eef2ff)] p-4 md:p-6">
@@ -593,68 +646,71 @@ function Dashboard({ currentUser, onLogout }) {
         <Header selectedDate={selectedDate} setSelectedDate={setSelectedDate} currentUser={currentUser} onLogout={onLogout} />
         <StatsRow report={effectiveReport} />
 
-        <Tabs defaultValue={defaultTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <TabsList className="grid h-auto w-full max-w-md grid-cols-2 rounded-2xl bg-white p-1 shadow-sm">
-              {canViewSchedule ? (
-                <TabsTrigger value="schedule" className="rounded-xl py-2">
-                  {t('controls.tabSchedule')}
+            <TabsList className={`grid h-auto w-full max-w-2xl ${tabGridCols} rounded-2xl bg-white p-1 shadow-sm`}>
+              {tabsConfig.map((tab) => (
+                <TabsTrigger key={tab.value} value={tab.value} className="rounded-xl py-2">
+                  {tab.label}
                 </TabsTrigger>
-              ) : (
-                <div className="rounded-xl py-2 text-center text-sm text-slate-300">{t('controls.tabSchedule')}</div>
-              )}
-              {canViewReport ? (
-                <TabsTrigger value="report" className="rounded-xl py-2">
-                  {t('controls.tabReport')}
-                </TabsTrigger>
-              ) : (
-                <div className="rounded-xl py-2 text-center text-sm text-slate-300">{t('controls.tabReport')}</div>
-              )}
+              ))}
             </TabsList>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              {canViewSchedule ? (
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 shadow-sm">
-                  <Search className="h-4 w-4 text-slate-400" />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder={currentUser.role === 'doctor' ? t('controls.searchOwn') : t('controls.searchDoctor')}
-                    className="border-0 shadow-none focus-visible:ring-0"
-                  />
-                </div>
-              ) : null}
+            {(activeTab === 'patients' || activeTab === 'treatmentPlan') && visiblePatients.length > 0 ? (
+              <PatientSelector
+                patients={visiblePatients}
+                doctors={DOCTORS}
+                value={effectivePatientId ?? ''}
+                onChange={setSelectedPatientId}
+                placeholder={t('controls.selectPatient')}
+              />
+            ) : null}
 
-              {canViewSchedule ? (
-                <div className="flex items-center rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-                  <Button variant={rangeType === 'day' ? 'default' : 'ghost'} className="rounded-xl" onClick={() => setRangeType('day')}>
-                    {t('controls.rangeDay')}
-                  </Button>
-                  <Button variant={rangeType === 'week' ? 'default' : 'ghost'} className="rounded-xl" onClick={() => setRangeType('week')}>
-                    {t('controls.rangeWeek')}
-                  </Button>
-                  <Button variant={rangeType === 'month' ? 'default' : 'ghost'} className="rounded-xl" onClick={() => setRangeType('month')}>
-                    {t('controls.rangeMonth')}
-                  </Button>
-                </div>
-              ) : null}
+            {controlsVisible ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                {activeTab === 'schedule' && canViewSchedule ? (
+                  <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 shadow-sm">
+                    <Search className="h-4 w-4 text-slate-400" />
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder={currentUser.role === 'doctor' ? t('controls.searchOwn') : t('controls.searchDoctor')}
+                      className="border-0 shadow-none focus-visible:ring-0"
+                    />
+                  </div>
+                ) : null}
 
-              {canViewReport ? (
-                <Select value={serviceFilter} onValueChange={setServiceFilter}>
-                  <SelectTrigger className="w-[240px] rounded-2xl border-slate-200 bg-white shadow-sm">
-                    <SelectValue placeholder={t('controls.filterPlaceholder')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('controls.filterAll')}</SelectItem>
-                    {Object.keys(SERVICES).map((key) => (
-                      <SelectItem key={key} value={key}>
-                        {t(`services.${key}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-            </div>
+                {activeTab === 'schedule' && canViewSchedule ? (
+                  <div className="flex items-center rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+                    <Button variant={rangeType === 'day' ? 'default' : 'ghost'} className="rounded-xl" onClick={() => setRangeType('day')}>
+                      {t('controls.rangeDay')}
+                    </Button>
+                    <Button variant={rangeType === 'week' ? 'default' : 'ghost'} className="rounded-xl" onClick={() => setRangeType('week')}>
+                      {t('controls.rangeWeek')}
+                    </Button>
+                    <Button variant={rangeType === 'month' ? 'default' : 'ghost'} className="rounded-xl" onClick={() => setRangeType('month')}>
+                      {t('controls.rangeMonth')}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {activeTab === 'report' && canViewReport ? (
+                  <Select value={serviceFilter} onValueChange={setServiceFilter}>
+                    <SelectTrigger className="w-[240px] rounded-2xl border-slate-200 bg-white shadow-sm">
+                      <SelectValue placeholder={t('controls.filterPlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('controls.filterAll')}</SelectItem>
+                      {Object.keys(SERVICES).map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {t(`services.${key}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           {canViewSchedule ? (
@@ -680,6 +736,30 @@ function Dashboard({ currentUser, onLogout }) {
               </Card>
 
               <ScheduleBoard search={search} doctors={visibleDoctors} dateRange={dateRange} rangeType={rangeType} />
+            </TabsContent>
+          ) : null}
+
+          {canViewPatients ? (
+            <TabsContent value="patients">
+              <PatientCardPage
+                patient={selectedPatient}
+                doctor={selectedPatientDoctor}
+                doctors={DOCTORS}
+                services={SERVICES}
+                hasTreatmentPlan={Boolean(selectedPlan)}
+                onOpenTreatmentPlan={() => setActiveTab('treatmentPlan')}
+              />
+            </TabsContent>
+          ) : null}
+
+          {canViewTreatmentPlan ? (
+            <TabsContent value="treatmentPlan">
+              <TreatmentPlanPage
+                plan={selectedPlan}
+                patient={selectedPatient}
+                doctor={selectedPatientDoctor}
+                onBackToPatient={() => setActiveTab('patients')}
+              />
             </TabsContent>
           ) : null}
 
