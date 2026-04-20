@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { LanguageSwitcher, useI18n } from './i18n.jsx'
 
 function getTodayString() {
   const now = new Date()
@@ -36,9 +37,9 @@ function addDays(dateStr, days) {
   return `${y}-${m}-${d}`
 }
 
-function getDisplayDate(dateStr) {
+function getDisplayDate(dateStr, locale) {
   const date = new Date(dateStr + 'T12:00:00')
-  return new Intl.DateTimeFormat('ru-RU', {
+  return new Intl.DateTimeFormat(locale, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -46,14 +47,14 @@ function getDisplayDate(dateStr) {
   }).format(date)
 }
 
-function getShortDateLabel(dateStr) {
+function getShortDateLabel(dateStr, locale) {
   const date = new Date(dateStr + 'T12:00:00')
-  return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit' }).format(date)
+  return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit' }).format(date)
 }
 
-function getWeekdayLabel(dateStr) {
+function getWeekdayLabel(dateStr, locale) {
   const date = new Date(dateStr + 'T12:00:00')
-  return new Intl.DateTimeFormat('ru-RU', { weekday: 'short' }).format(date)
+  return new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)
 }
 
 function getDateRange(selectedDate, rangeType) {
@@ -70,20 +71,20 @@ const USERS = [
 ]
 
 const DOCTORS = [
-  { id: 'doc-1', name: 'Др. Айдана Сейтова', specialty: 'Терапевт' },
-  { id: 'doc-2', name: 'Др. Нұрлан Қасымов', specialty: 'Кардиолог' },
-  { id: 'doc-3', name: 'Др. Әсем Төлеуова', specialty: 'Невролог' },
-  { id: 'doc-4', name: 'Др. Руслан Жанатов', specialty: 'Педиатр' },
-  { id: 'doc-5', name: 'Др. Маржан Иманбек', specialty: 'ЛОР' },
+  { id: 'doc-1', name: 'Др. Айдана Сейтова', specialtyKey: 'therapist' },
+  { id: 'doc-2', name: 'Др. Нұрлан Қасымов', specialtyKey: 'cardiologist' },
+  { id: 'doc-3', name: 'Др. Әсем Төлеуова', specialtyKey: 'neurologist' },
+  { id: 'doc-4', name: 'Др. Руслан Жанатов', specialtyKey: 'pediatrician' },
+  { id: 'doc-5', name: 'Др. Маржан Иманбек', specialtyKey: 'ent' },
 ]
 
 const SERVICES = {
-  consultation: { label: 'Консультация', price: 12000 },
-  ecg: { label: 'ЭКГ', price: 8000 },
-  followup: { label: 'Қайта қабылдау', price: 9000 },
-  injection: { label: 'Процедура', price: 7000 },
-  ultrasound: { label: 'УЗИ', price: 15000 },
-  checkup: { label: 'Чек-ап', price: 18000 },
+  consultation: { price: 12000 },
+  ecg: { price: 8000 },
+  followup: { price: 9000 },
+  injection: { price: 7000 },
+  ultrasound: { price: 15000 },
+  checkup: { price: 18000 },
 }
 
 const HOURS = Array.from({ length: 12 }, (_, i) => {
@@ -116,8 +117,8 @@ const STATUS_STYLES = {
   pending: 'bg-amber-50 border-amber-300',
 }
 
-function formatMoney(value) {
-  return new Intl.NumberFormat('ru-RU').format(value) + ' ₸'
+function formatMoney(value, locale) {
+  return new Intl.NumberFormat(locale).format(value) + ' ₸'
 }
 
 function getDoctorIdByUser(currentUser) {
@@ -126,7 +127,7 @@ function getDoctorIdByUser(currentUser) {
   return matchedDoctor?.id ?? DOCTORS[0]?.id ?? null
 }
 
-function buildRevenueReport(doctorIds = null, dateRange = null) {
+function buildRevenueReport(t, doctorIds = null, dateRange = null) {
   const visibleDoctors = doctorIds ? DOCTORS.filter((doctor) => doctorIds.includes(doctor.id)) : DOCTORS
 
   return visibleDoctors.map((doctor) => {
@@ -134,14 +135,20 @@ function buildRevenueReport(doctorIds = null, dateRange = null) {
     const total = doctorAppointments.reduce((sum, item) => sum + SERVICES[item.service].price, 0)
 
     const servicesBreakdown = doctorAppointments.reduce((acc, item) => {
-      const service = SERVICES[item.service]
-      if (!acc[service.label]) acc[service.label] = { count: 0, amount: 0 }
-      acc[service.label].count += 1
-      acc[service.label].amount += service.price
+      const label = t(`services.${item.service}`)
+      if (!acc[label]) acc[label] = { count: 0, amount: 0 }
+      acc[label].count += 1
+      acc[label].amount += SERVICES[item.service].price
       return acc
     }, {})
 
-    return { ...doctor, appointments: doctorAppointments.length, total, servicesBreakdown }
+    return {
+      ...doctor,
+      specialty: t(`specialties.${doctor.specialtyKey}`),
+      appointments: doctorAppointments.length,
+      total,
+      servicesBreakdown,
+    }
   })
 }
 
@@ -160,6 +167,7 @@ function getAppointmentContinuation(doctorId, time, date) {
 }
 
 function LoginScreen({ onLogin }) {
+  const { t } = useI18n()
   const [username, setUsername] = useState('owner1')
   const [password, setPassword] = useState('owner1')
   const [error, setError] = useState('')
@@ -168,7 +176,7 @@ function LoginScreen({ onLogin }) {
     e.preventDefault()
     const user = USERS.find((u) => u.username === username && u.password === password)
     if (!user) {
-      setError('Қате логин немесе пароль')
+      setError(t('login.error'))
       return
     }
     setError('')
@@ -179,35 +187,36 @@ function LoginScreen({ onLogin }) {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-6 text-white">
       <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-6xl items-center gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-          <Badge className="rounded-full bg-white/10 px-4 py-1 text-white hover:bg-white/10">Clinic Demo Dashboard</Badge>
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge className="rounded-full bg-white/10 px-4 py-1 text-white hover:bg-white/10">{t('login.badge')}</Badge>
+            <LanguageSwitcher variant="dark" />
+          </div>
           <div className="space-y-4">
             <h1 className="text-4xl font-bold leading-tight lg:text-6xl">
-              Клиникаға арналған <span className="text-slate-300">ыңғайлы scheduling dashboard</span>
+              {t('login.heroLead')} <span className="text-slate-300">{t('login.heroAccent')}</span>
             </h1>
-            <p className="max-w-2xl text-base text-slate-300 lg:text-lg">
-              Demo үшін fake авторизация, кестелік шахматка және период бойынша көрініс: бүгін, 1 апта, 1 ай.
-            </p>
+            <p className="max-w-2xl text-base text-slate-300 lg:text-lg">{t('login.heroSubtitle')}</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <Card className="rounded-3xl border-white/10 bg-white/5 text-white shadow-2xl backdrop-blur">
               <CardContent className="p-5">
                 <CalendarDays className="mb-3 h-6 w-6" />
-                <p className="text-sm text-slate-300">Авто дата</p>
-                <p className="mt-1 text-xl font-semibold">Бүгін ашылады</p>
+                <p className="text-sm text-slate-300">{t('login.cardAutoDateTitle')}</p>
+                <p className="mt-1 text-xl font-semibold">{t('login.cardAutoDateValue')}</p>
               </CardContent>
             </Card>
             <Card className="rounded-3xl border-white/10 bg-white/5 text-white shadow-2xl backdrop-blur">
               <CardContent className="p-5">
                 <Users className="mb-3 h-6 w-6" />
-                <p className="text-sm text-slate-300">Мамандар</p>
-                <p className="mt-1 text-xl font-semibold">{DOCTORS.length} врач</p>
+                <p className="text-sm text-slate-300">{t('login.cardDoctorsTitle')}</p>
+                <p className="mt-1 text-xl font-semibold">{t('login.cardDoctorsValue', { count: DOCTORS.length })}</p>
               </CardContent>
             </Card>
             <Card className="rounded-3xl border-white/10 bg-white/5 text-white shadow-2xl backdrop-blur">
               <CardContent className="p-5">
                 <FileBarChart2 className="mb-3 h-6 w-6" />
-                <p className="text-sm text-slate-300">Отчет</p>
-                <p className="mt-1 text-xl font-semibold">Revenue breakdown</p>
+                <p className="text-sm text-slate-300">{t('login.cardReportTitle')}</p>
+                <p className="mt-1 text-xl font-semibold">{t('login.cardReportValue')}</p>
               </CardContent>
             </Card>
           </div>
@@ -218,10 +227,10 @@ function LoginScreen({ onLogin }) {
             <CardHeader className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-slate-500">
                 <ShieldCheck className="h-4 w-4" />
-                Demo login
+                {t('login.demoLogin')}
               </div>
-              <CardTitle className="text-2xl">Жүйеге кіру</CardTitle>
-              <CardDescription>Төмендегі логиндердің бірін қолданыңыз</CardDescription>
+              <CardTitle className="text-2xl">{t('login.cardTitle')}</CardTitle>
+              <CardDescription>{t('login.cardDescription')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
@@ -237,11 +246,11 @@ function LoginScreen({ onLogin }) {
               </div>
               <form className="space-y-4" onSubmit={submit}>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Логин</label>
+                  <label className="text-sm font-medium">{t('login.usernameLabel')}</label>
                   <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username" className="h-11 rounded-2xl" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Пароль</label>
+                  <label className="text-sm font-medium">{t('login.passwordLabel')}</label>
                   <Input
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -252,7 +261,7 @@ function LoginScreen({ onLogin }) {
                 </div>
                 {error ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div> : null}
                 <Button type="submit" className="h-11 w-full rounded-2xl text-base">
-                  Кіру
+                  {t('login.submit')}
                 </Button>
               </form>
             </CardContent>
@@ -264,23 +273,20 @@ function LoginScreen({ onLogin }) {
 }
 
 function Header({ selectedDate, setSelectedDate, currentUser, onLogout }) {
-  const roleLabel = {
-    owner: 'Толық доступ',
-    doctor: 'Өз кестесі + отчет',
-    accountant: 'Тек отчет',
-  }
+  const { t } = useI18n()
 
   return (
     <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur xl:flex-row xl:items-center xl:justify-between">
       <div>
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <Stethoscope className="h-4 w-4" />
-          ClinicFlow Demo
+          {t('common.brand')}
         </div>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Басты бет / Прием шахматкасы</h1>
-        <p className="mt-1 text-sm text-slate-500">Барлық рольдер үшін кестелік көрініс сақталды. Период: бүгін, 1 апта, 1 ай.</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{t('header.breadcrumb')}</h1>
+        <p className="mt-1 text-sm text-slate-500">{t('header.subtitle')}</p>
       </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <LanguageSwitcher />
         <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
           <CalendarDays className="h-4 w-4 text-slate-500" />
           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-sm outline-none" />
@@ -292,9 +298,9 @@ function Header({ selectedDate, setSelectedDate, currentUser, onLogout }) {
           <div>
             <div className="text-sm font-semibold text-slate-900">{currentUser.name}</div>
             <div className="text-xs uppercase tracking-wide text-slate-500">{currentUser.role}</div>
-            <div className="text-[11px] text-slate-400">{roleLabel[currentUser.role]}</div>
+            <div className="text-[11px] text-slate-400">{t(`role.${currentUser.role}`)}</div>
           </div>
-          <Button variant="ghost" size="icon" className="rounded-xl" onClick={onLogout}>
+          <Button variant="ghost" size="icon" className="rounded-xl" onClick={onLogout} title={t('common.logout')}>
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
@@ -304,6 +310,7 @@ function Header({ selectedDate, setSelectedDate, currentUser, onLogout }) {
 }
 
 function StatsRow({ report }) {
+  const { t, dateLocale } = useI18n()
   const totalRevenue = report.reduce((sum, item) => sum + item.total, 0)
   const totalAppointments = report.reduce((sum, item) => sum + item.appointments, 0)
   const topDoctor = [...report].sort((a, b) => b.total - a.total)[0]
@@ -314,8 +321,8 @@ function StatsRow({ report }) {
         <CardContent className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-500">Жалпы выручка</p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">{formatMoney(totalRevenue)}</p>
+              <p className="text-sm text-slate-500">{t('stats.revenue')}</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">{formatMoney(totalRevenue, dateLocale)}</p>
             </div>
             <div className="rounded-2xl bg-slate-100 p-3">
               <DollarSign className="h-5 w-5" />
@@ -327,7 +334,7 @@ function StatsRow({ report }) {
         <CardContent className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-500">Қабылдаулар саны</p>
+              <p className="text-sm text-slate-500">{t('stats.appointments')}</p>
               <p className="mt-2 text-2xl font-bold text-slate-900">{totalAppointments}</p>
             </div>
             <div className="rounded-2xl bg-slate-100 p-3">
@@ -340,7 +347,7 @@ function StatsRow({ report }) {
         <CardContent className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-500">Топ врач</p>
+              <p className="text-sm text-slate-500">{t('stats.topDoctor')}</p>
               <p className="mt-2 text-lg font-bold text-slate-900">{topDoctor?.name}</p>
             </div>
             <div className="rounded-2xl bg-slate-100 p-3">
@@ -353,7 +360,7 @@ function StatsRow({ report }) {
         <CardContent className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-500">Уақыт диапазоны</p>
+              <p className="text-sm text-slate-500">{t('stats.timeRange')}</p>
               <p className="mt-2 text-2xl font-bold text-slate-900">09:00 - 20:00</p>
             </div>
             <div className="rounded-2xl bg-slate-100 p-3">
@@ -367,7 +374,12 @@ function StatsRow({ report }) {
 }
 
 function ScheduleBoard({ search, doctors, dateRange, rangeType }) {
-  const filteredDoctors = doctors.filter(
+  const { t, dateLocale } = useI18n()
+  const localizedDoctors = doctors.map((doctor) => ({
+    ...doctor,
+    specialty: t(`specialties.${doctor.specialtyKey}`),
+  }))
+  const filteredDoctors = localizedDoctors.filter(
     (doctor) => doctor.name.toLowerCase().includes(search.toLowerCase()) || doctor.specialty.toLowerCase().includes(search.toLowerCase()),
   )
 
@@ -376,17 +388,19 @@ function ScheduleBoard({ search, doctors, dateRange, rangeType }) {
   return (
     <Card className="rounded-[28px] border-slate-200 bg-white shadow-sm">
       <CardHeader>
-        <CardTitle className="text-xl">Қабылдау кестесі</CardTitle>
-        <CardDescription>Уақыт вертикаль бағытта, врачтар горизонталь бағытта. Таңдалған периодқа қарай кесте төменге қарай ұзарады.</CardDescription>
+        <CardTitle className="text-xl">{t('schedule.title')}</CardTitle>
+        <CardDescription>{t('schedule.description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="overflow-auto rounded-2xl border border-slate-300">
           <table className="min-w-[1220px] border-collapse text-sm">
             <thead>
               <tr>
-                <th className="sticky left-0 top-0 z-30 min-w-[120px] border border-slate-300 bg-slate-100 px-4 py-3 text-left font-semibold text-slate-900">Күн</th>
+                <th className="sticky left-0 top-0 z-30 min-w-[120px] border border-slate-300 bg-slate-100 px-4 py-3 text-left font-semibold text-slate-900">
+                  {t('schedule.colDay')}
+                </th>
                 <th className="sticky left-[120px] top-0 z-30 min-w-[100px] border border-slate-300 bg-slate-100 px-4 py-3 text-left font-semibold text-slate-900">
-                  Уақыт
+                  {t('schedule.colTime')}
                 </th>
                 {filteredDoctors.map((doctor) => (
                   <th key={doctor.id} className="min-w-[220px] border border-slate-300 bg-slate-100 px-4 py-3 text-left font-semibold text-slate-900">
@@ -411,8 +425,10 @@ function ScheduleBoard({ search, doctors, dateRange, rangeType }) {
                     <td className="sticky left-0 z-20 border border-slate-300 bg-white px-4 py-4 font-medium text-slate-900">
                       {isFirstHourOfDate ? (
                         <div>
-                          <div>{getShortDateLabel(date)}</div>
-                          {rangeType !== 'day' ? <div className="mt-1 text-xs uppercase text-slate-500">{getWeekdayLabel(date)}</div> : null}
+                          <div>{getShortDateLabel(date, dateLocale)}</div>
+                          {rangeType !== 'day' ? (
+                            <div className="mt-1 text-xs uppercase text-slate-500">{getWeekdayLabel(date, dateLocale)}</div>
+                          ) : null}
                         </div>
                       ) : null}
                     </td>
@@ -428,16 +444,20 @@ function ScheduleBoard({ search, doctors, dateRange, rangeType }) {
                           {appointment ? (
                             <div className={`h-full rounded-xl border p-3 shadow-sm ${STATUS_STYLES[appointment.status]}`}>
                               <div className="text-sm font-semibold">{appointment.client}</div>
-                              <div className="mt-1 text-xs opacity-80">{SERVICES[appointment.service].label}</div>
+                              <div className="mt-1 text-xs opacity-80">{t(`services.${appointment.service}`)}</div>
                               <div className="mt-2 flex items-center justify-between gap-2">
                                 <Badge variant="secondary" className="rounded-full text-[10px]">
-                                  {formatMoney(SERVICES[appointment.service].price)}
+                                  {formatMoney(SERVICES[appointment.service].price, dateLocale)}
                                 </Badge>
-                                {appointment.duration > 1 ? <span className="text-[10px] opacity-70">{appointment.duration} сағ</span> : null}
+                                {appointment.duration > 1 ? (
+                                  <span className="text-[10px] opacity-70">{t('schedule.durationHours', { count: appointment.duration })}</span>
+                                ) : null}
                               </div>
                             </div>
                           ) : (
-                            <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-200 text-[10px] text-slate-300">Бос</div>
+                            <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-200 text-[10px] text-slate-300">
+                              {t('schedule.empty')}
+                            </div>
                           )}
                         </td>
                       )
@@ -454,22 +474,24 @@ function ScheduleBoard({ search, doctors, dateRange, rangeType }) {
 }
 
 function ReportTable({ report }) {
+  const { t, dateLocale } = useI18n()
+
   return (
     <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
       <Card className="rounded-[28px] border-slate-200 bg-white shadow-sm">
         <CardHeader>
-          <CardTitle className="text-xl">Врачтар бойынша табыс</CardTitle>
-          <CardDescription>Қай врач қанша ақша алуы керек екенін mock data негізінде көрсетеді</CardDescription>
+          <CardTitle className="text-xl">{t('report.revenueTitle')}</CardTitle>
+          <CardDescription>{t('report.revenueDescription')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-auto rounded-2xl border border-slate-300">
             <table className="min-w-full border-collapse text-sm">
               <thead>
                 <tr>
-                  <th className="border border-slate-300 bg-slate-100 px-4 py-3 text-left">Врач</th>
-                  <th className="border border-slate-300 bg-slate-100 px-4 py-3 text-left">Специализация</th>
-                  <th className="border border-slate-300 bg-slate-100 px-4 py-3 text-center">Қабылдау саны</th>
-                  <th className="border border-slate-300 bg-slate-100 px-4 py-3 text-right">Сома</th>
+                  <th className="border border-slate-300 bg-slate-100 px-4 py-3 text-left">{t('report.colDoctor')}</th>
+                  <th className="border border-slate-300 bg-slate-100 px-4 py-3 text-left">{t('report.colSpecialty')}</th>
+                  <th className="border border-slate-300 bg-slate-100 px-4 py-3 text-center">{t('report.colCount')}</th>
+                  <th className="border border-slate-300 bg-slate-100 px-4 py-3 text-right">{t('report.colAmount')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -478,7 +500,7 @@ function ReportTable({ report }) {
                     <td className="border border-slate-300 px-4 py-3 font-medium text-slate-900">{item.name}</td>
                     <td className="border border-slate-300 px-4 py-3 text-slate-600">{item.specialty}</td>
                     <td className="border border-slate-300 px-4 py-3 text-center">{item.appointments}</td>
-                    <td className="border border-slate-300 px-4 py-3 text-right font-semibold text-slate-900">{formatMoney(item.total)}</td>
+                    <td className="border border-slate-300 px-4 py-3 text-right font-semibold text-slate-900">{formatMoney(item.total, dateLocale)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -489,8 +511,8 @@ function ReportTable({ report }) {
 
       <Card className="rounded-[28px] border-slate-200 bg-white shadow-sm">
         <CardHeader>
-          <CardTitle className="text-xl">Көрсетілген услугалар</CardTitle>
-          <CardDescription>Әр врачтың қандай қызметтер көрсеткені және сомасы</CardDescription>
+          <CardTitle className="text-xl">{t('report.servicesTitle')}</CardTitle>
+          <CardDescription>{t('report.servicesDescription')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {report.map((doctor) => (
@@ -500,16 +522,16 @@ function ReportTable({ report }) {
                   <div className="font-semibold text-slate-900">{doctor.name}</div>
                   <div className="text-xs text-slate-500">{doctor.specialty}</div>
                 </div>
-                <Badge className="rounded-full">{formatMoney(doctor.total)}</Badge>
+                <Badge className="rounded-full">{formatMoney(doctor.total, dateLocale)}</Badge>
               </div>
               <div className="space-y-2">
                 {Object.entries(doctor.servicesBreakdown).map(([serviceName, data]) => (
                   <div key={serviceName} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                     <div>
                       <div className="font-medium text-slate-800">{serviceName}</div>
-                      <div className="text-xs text-slate-500">{data.count} рет</div>
+                      <div className="text-xs text-slate-500">{t('report.timesCount', { count: data.count })}</div>
                     </div>
-                    <div className="font-semibold text-slate-900">{formatMoney(data.amount)}</div>
+                    <div className="font-semibold text-slate-900">{formatMoney(data.amount, dateLocale)}</div>
                   </div>
                 ))}
               </div>
@@ -522,6 +544,7 @@ function ReportTable({ report }) {
 }
 
 function Dashboard({ currentUser, onLogout }) {
+  const { t, dateLocale } = useI18n()
   const [selectedDate, setSelectedDate] = useState(getTodayString())
   const [search, setSearch] = useState('')
   const [serviceFilter, setServiceFilter] = useState('all')
@@ -535,9 +558,9 @@ function Dashboard({ currentUser, onLogout }) {
   }, [currentUser, doctorId])
 
   const baseReport = useMemo(() => {
-    if (currentUser.role === 'doctor' && doctorId) return buildRevenueReport([doctorId], dateRange)
-    return buildRevenueReport(null, dateRange)
-  }, [currentUser, doctorId, dateRange])
+    if (currentUser.role === 'doctor' && doctorId) return buildRevenueReport(t, [doctorId], dateRange)
+    return buildRevenueReport(t, null, dateRange)
+  }, [currentUser, doctorId, dateRange, t])
 
   const visibleReport = useMemo(() => {
     if (serviceFilter === 'all') return baseReport
@@ -548,16 +571,16 @@ function Dashboard({ currentUser, onLogout }) {
         )
         const total = appointments.reduce((sum, item) => sum + SERVICES[item.service].price, 0)
         const servicesBreakdown = appointments.reduce((acc, item) => {
-          const service = SERVICES[item.service]
-          if (!acc[service.label]) acc[service.label] = { count: 0, amount: 0 }
-          acc[service.label].count += 1
-          acc[service.label].amount += service.price
+          const label = t(`services.${item.service}`)
+          if (!acc[label]) acc[label] = { count: 0, amount: 0 }
+          acc[label].count += 1
+          acc[label].amount += SERVICES[item.service].price
           return acc
         }, {})
         return { ...doctor, appointments: appointments.length, total, servicesBreakdown }
       })
       .filter((doctor) => doctor.appointments > 0)
-  }, [baseReport, serviceFilter, dateRange])
+  }, [baseReport, serviceFilter, dateRange, t])
 
   const effectiveReport = visibleReport.length ? visibleReport : baseReport
   const canViewSchedule = currentUser.role === 'owner' || currentUser.role === 'doctor'
@@ -575,17 +598,17 @@ function Dashboard({ currentUser, onLogout }) {
             <TabsList className="grid h-auto w-full max-w-md grid-cols-2 rounded-2xl bg-white p-1 shadow-sm">
               {canViewSchedule ? (
                 <TabsTrigger value="schedule" className="rounded-xl py-2">
-                  Шахматка
+                  {t('controls.tabSchedule')}
                 </TabsTrigger>
               ) : (
-                <div className="rounded-xl py-2 text-center text-sm text-slate-300">Шахматка</div>
+                <div className="rounded-xl py-2 text-center text-sm text-slate-300">{t('controls.tabSchedule')}</div>
               )}
               {canViewReport ? (
                 <TabsTrigger value="report" className="rounded-xl py-2">
-                  Отчет
+                  {t('controls.tabReport')}
                 </TabsTrigger>
               ) : (
-                <div className="rounded-xl py-2 text-center text-sm text-slate-300">Отчет</div>
+                <div className="rounded-xl py-2 text-center text-sm text-slate-300">{t('controls.tabReport')}</div>
               )}
             </TabsList>
 
@@ -596,7 +619,7 @@ function Dashboard({ currentUser, onLogout }) {
                   <Input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder={currentUser.role === 'doctor' ? 'Өз кестеңізді іздеу' : 'Врачты немесе специализацияны іздеу'}
+                    placeholder={currentUser.role === 'doctor' ? t('controls.searchOwn') : t('controls.searchDoctor')}
                     className="border-0 shadow-none focus-visible:ring-0"
                   />
                 </div>
@@ -605,13 +628,13 @@ function Dashboard({ currentUser, onLogout }) {
               {canViewSchedule ? (
                 <div className="flex items-center rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
                   <Button variant={rangeType === 'day' ? 'default' : 'ghost'} className="rounded-xl" onClick={() => setRangeType('day')}>
-                    Бүгін
+                    {t('controls.rangeDay')}
                   </Button>
                   <Button variant={rangeType === 'week' ? 'default' : 'ghost'} className="rounded-xl" onClick={() => setRangeType('week')}>
-                    1 апта
+                    {t('controls.rangeWeek')}
                   </Button>
                   <Button variant={rangeType === 'month' ? 'default' : 'ghost'} className="rounded-xl" onClick={() => setRangeType('month')}>
-                    1 ай
+                    {t('controls.rangeMonth')}
                   </Button>
                 </div>
               ) : null}
@@ -619,13 +642,13 @@ function Dashboard({ currentUser, onLogout }) {
               {canViewReport ? (
                 <Select value={serviceFilter} onValueChange={setServiceFilter}>
                   <SelectTrigger className="w-[240px] rounded-2xl border-slate-200 bg-white shadow-sm">
-                    <SelectValue placeholder="Услуга бойынша фильтр" />
+                    <SelectValue placeholder={t('controls.filterPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Барлық услугалар</SelectItem>
-                    {Object.entries(SERVICES).map(([key, value]) => (
+                    <SelectItem value="all">{t('controls.filterAll')}</SelectItem>
+                    {Object.keys(SERVICES).map((key) => (
                       <SelectItem key={key} value={key}>
-                        {value.label}
+                        {t(`services.${key}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -639,14 +662,18 @@ function Dashboard({ currentUser, onLogout }) {
               <Card className="rounded-[28px] border-slate-200 bg-slate-900 text-white shadow-sm">
                 <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <div className="text-sm text-slate-300">Таңдалған күн</div>
-                    <div className="mt-1 text-2xl font-bold capitalize">{getDisplayDate(selectedDate)}</div>
+                    <div className="text-sm text-slate-300">{t('schedule.selectedDay')}</div>
+                    <div className="mt-1 text-2xl font-bold capitalize">{getDisplayDate(selectedDate, dateLocale)}</div>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <Badge className="rounded-full bg-white/10 text-white hover:bg-white/10">09:00 - 20:00</Badge>
-                    <Badge className="rounded-full bg-white/10 text-white hover:bg-white/10">Кесте border visible</Badge>
+                    <Badge className="rounded-full bg-white/10 text-white hover:bg-white/10">{t('schedule.borderBadge')}</Badge>
                     <Badge className="rounded-full bg-white/10 text-white hover:bg-white/10">
-                      {rangeType === 'day' ? 'Бүгінгі күн' : rangeType === 'week' ? '1 апталық көрініс' : '1 айлық көрініс'}
+                      {rangeType === 'day'
+                        ? t('schedule.viewDay')
+                        : rangeType === 'week'
+                        ? t('schedule.viewWeek')
+                        : t('schedule.viewMonth')}
                     </Badge>
                   </div>
                 </CardContent>
