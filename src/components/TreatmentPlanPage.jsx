@@ -63,6 +63,39 @@ function formatMoney(value, locale) {
   return new Intl.NumberFormat(locale).format(value) + ' ₸'
 }
 
+function ProceduresList({ procedures, dateLocale, t }) {
+  return (
+    <ol className="relative space-y-4 border-l border-slate-200 pl-6">
+      {procedures.map((proc, idx) => {
+        const style = PROCEDURE_STATUS_STYLE[proc.statusKey] || PROCEDURE_STATUS_STYLE.scheduled
+        const Icon = style.Icon
+        return (
+          <li key={`${proc.date}-${idx}`} className="relative">
+            <span className="absolute -left-[29px] top-2 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-indigo-600 shadow" />
+            <div className={`rounded-2xl border px-4 py-3 ${style.cls}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Icon className="h-4 w-4" />
+                  {proc.name}
+                </div>
+                <div className="inline-flex items-center gap-1 text-xs">
+                  <Clock3 className="h-3.5 w-3.5" /> {formatDate(proc.date, dateLocale)}
+                </div>
+              </div>
+              {proc.note ? <div className="mt-1 text-xs opacity-80">{proc.note}</div> : null}
+              <div className="mt-2">
+                <Badge variant="outline" className="rounded-full border-current bg-white/60 text-xs">
+                  {t(`treatmentPlan.procedure.status.${proc.statusKey}`)}
+                </Badge>
+              </div>
+            </div>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
 export default function TreatmentPlanPage({ plan, patient, doctor, onBackToPatient }) {
   const { t, dateLocale } = useI18n()
 
@@ -217,34 +250,7 @@ export default function TreatmentPlanPage({ plan, patient, doctor, onBackToPatie
             <CardDescription>{t('treatmentPlan.sectionProceduresDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <ol className="relative space-y-4 border-l border-slate-200 pl-6">
-              {plan.procedures.map((proc, idx) => {
-                const style = PROCEDURE_STATUS_STYLE[proc.statusKey] || PROCEDURE_STATUS_STYLE.scheduled
-                const Icon = style.Icon
-                return (
-                  <li key={`${proc.date}-${idx}`} className="relative">
-                    <span className="absolute -left-[29px] top-2 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-indigo-600 shadow" />
-                    <div className={`rounded-2xl border px-4 py-3 ${style.cls}`}>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 text-sm font-semibold">
-                          <Icon className="h-4 w-4" />
-                          {proc.name}
-                        </div>
-                        <div className="inline-flex items-center gap-1 text-xs">
-                          <Clock3 className="h-3.5 w-3.5" /> {formatDate(proc.date, dateLocale)}
-                        </div>
-                      </div>
-                      {proc.note ? <div className="mt-1 text-xs opacity-80">{proc.note}</div> : null}
-                      <div className="mt-2">
-                        <Badge variant="outline" className="rounded-full border-current bg-white/60 text-xs">
-                          {t(`treatmentPlan.procedure.status.${proc.statusKey}`)}
-                        </Badge>
-                      </div>
-                    </div>
-                  </li>
-                )
-              })}
-            </ol>
+            <ProceduresList procedures={plan.procedures} dateLocale={dateLocale} t={t} />
           </CardContent>
         </Card>
 
